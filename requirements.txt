@@ -1,7 +1,7 @@
 streamlit
 tensorflow
-opencv-python
 mediapipe
-gtts
+opencv-python
+gTTS
 pygame
 Pillow
