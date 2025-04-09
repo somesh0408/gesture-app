@@ -86,6 +86,8 @@ threshold = 0.8
 
 cap = cv2.VideoCapture(0)
 
+stop_button = st.button("Stop")
+
 with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
     while cap.isOpened():
         ret, frame = cap.read()
@@ -135,8 +137,7 @@ with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=
 
         frame_placeholder.image(image, channels="BGR")
 
-        if cv2.waitKey(10) & 0xFF == ord('q'):
+        if stop_button:
             break
 
 cap.release()
-cv2.destroyAllWindows()
