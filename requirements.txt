@@ -3,5 +3,5 @@ tensorflow==2.15.0
 mediapipe==0.10.9
 opencv-python-headless==4.8.1.78
 gTTS==2.5.1
-pygame==2.5.2
+pygame==2.1.0
 Pillow==10.2.0
