@@ -1,0 +1,7 @@
+streamlit
+tensorflow
+opencv-python
+mediapipe
+gtts
+pygame
+Pillow
