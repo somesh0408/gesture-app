@@ -1,6 +1,6 @@
 streamlit==1.32.2
 tensorflow==2.18.0
-mediapipe==0.10.9
+mediapipe==0.10.21
 opencv-python-headless==4.8.1.78
 gTTS==2.5.1
 pygame==2.1.0
