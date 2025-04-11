@@ -26,6 +26,18 @@
       border-radius: 16px;
       overflow: hidden;
       margin-top: 20px;
+      width: 640px;
+      height: 480px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #webcam {
+      width: 640px;
+      height: 480px;
+      object-fit: cover;
+      border-radius: 16px;
     }
 
     #voice-indicator {
@@ -119,10 +131,11 @@
 
   <!-- Video Container -->
   <div id="video-container">
-    <img id="video-stream" src="{{ url_for('video_feed') }}" width="640" height="480" />
+    <video id="webcam" autoplay playsinline muted></video>
   </div>
 
   <script>
+    // Language toggle
     const toggle = document.getElementById("langToggle");
     let language = 'en'; // default
 
@@ -135,6 +148,7 @@
       });
     });
 
+    // Voice pulse indicator
     function showVoiceIndicator() {
       const indicator = document.getElementById("voice-indicator");
       indicator.style.display = "block";
@@ -147,6 +161,17 @@
     window.addEventListener("voicePlaying", () => {
       showVoiceIndicator();
     });
+
+    // Webcam setup
+    const video = document.getElementById('webcam');
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then((stream) => {
+        video.srcObject = stream;
+      })
+      .catch((err) => {
+        console.error("Error accessing webcam: ", err);
+        alert("Webcam access is required for gesture detection. Please allow camera access.");
+      });
   </script>
 
 </body>
