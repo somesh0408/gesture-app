@@ -1,4 +1,4 @@
-import streamlit as st
+from flask import Flask, render_template, Response, request
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -8,18 +8,11 @@ import pygame
 import os
 import tempfile
 from PIL import ImageFont, ImageDraw, Image
-from streamlit.components.v1 import html
 
-# Page config
-st.set_page_config(page_title="Real-time Gesture Recognition", layout="wide")
-st.title("🤟 Real-time Gesture Recognition with Translation & Voice")
+app = Flask(__name__)
 
 # Load model
-try:
-    model = tf.keras.models.load_model("action.h5")
-except Exception as e:
-    st.error(f"Error loading model: {e}")
-    st.stop()
+model = tf.keras.models.load_model("action.h5")
 
 # Label list (actions)
 actions = np.array(['hello', 'thanks', 'no'])
@@ -38,15 +31,14 @@ hindi_font_path = r"C:\\Windows\\Fonts\\Mangal.ttf"
 mp_holistic = mp.solutions.holistic
 mp_drawing = mp.solutions.drawing_utils
 
-# Load HTML UI
-with open("templates/index.html", 'r', encoding='utf-8') as f:
-    custom_html = f.read()
-html(custom_html, height=100)
+# Language toggle (default to English)
+selected_language = "English"
 
-# Language toggle
-language = st.radio("Choose Language for Voice Output", ["English", "Hindi"], horizontal=True)
+sequence = []
+sentence = []
+predictions = []
+threshold = 0.8
 
-# Mediapipe detection
 def mediapipe_detection(image, model):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image.flags.writeable = False
@@ -73,71 +65,83 @@ def speak(text, lang_code):
         pygame.mixer.quit()
         os.remove(temp_path)
     except Exception as e:
-        st.warning(f"Audio playback error: {e}")
+        print(f"Audio playback error: {e}")
 
-# Streamlit UI placeholders
-frame_placeholder = st.empty()
+def generate_frames():
+    global selected_language
+    cap = cv2.VideoCapture(0)
+    with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-# Webcam + logic
-sequence = []
-sentence = []
-predictions = []
-threshold = 0.8
+            image, results = mediapipe_detection(frame, holistic)
+            keypoints = extract_keypoints(results)
 
-cap = cv2.VideoCapture(0)
+            sequence.append(keypoints)
+            sequence[:] = sequence[-30:]
 
-stop_button = st.button("Stop")
+            translated_word = ""
 
-with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Failed to access webcam.")
-            break
+            if len(sequence) == 30:
+                res = model.predict(np.expand_dims(sequence, axis=0))[0]
+                predictions.append(np.argmax(res))
 
-        image, results = mediapipe_detection(frame, holistic)
-        keypoints = extract_keypoints(results)
-        sequence.append(keypoints)
-        sequence = sequence[-30:]
+                if np.unique(predictions[-10:])[0] == np.argmax(res) and res[np.argmax(res)] > threshold:
+                    predicted_word = actions[np.argmax(res)]
+                    translated_word = translations.get(predicted_word, predicted_word) if selected_language == "Hindi" else predicted_word
 
-        translated_word = ""
+                    if len(sentence) == 0 or (predicted_word != sentence[-1]):
+                        sentence.append(predicted_word)
+                        speak(translated_word, 'hi' if selected_language == "Hindi" else 'en')
 
-        if len(sequence) == 30:
-            res = model.predict(np.expand_dims(sequence, axis=0))[0]
-            predictions.append(np.argmax(res))
+                if len(sentence) > 5:
+                    sentence[:] = sentence[-5:]
 
-            if np.unique(predictions[-10:])[0] == np.argmax(res) and res[np.argmax(res)] > threshold:
-                predicted_word = actions[np.argmax(res)]
-                translated_word = translations.get(predicted_word, predicted_word) if language == "Hindi" else predicted_word
+            # Draw landmarks
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+            mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+            mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
 
-                if len(sentence) == 0 or (predicted_word != sentence[-1]):
-                    sentence.append(predicted_word)
-                    speak(translated_word, 'hi' if language == "Hindi" else 'en')
+            # Convert to PIL for Hindi rendering
+            image_pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(image_pil)
+            try:
+                font = ImageFont.truetype(hindi_font_path, 32)
+                if translated_word and selected_language == "Hindi":
+                    draw.text((10, 60), translated_word, font=font, fill=(255, 255, 255))
+            except Exception as e:
+                print(f"Font error: {e}")
+            image = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
 
-            if len(sentence) > 5:
-                sentence = sentence[-5:]
+            # Overlay recognized sentence
+            cv2.rectangle(image, (0, 0), (640, 40), (245, 117, 16), -1)
+            cv2.putText(image, ' '.join(sentence), (3, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
-        mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-        mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+            # Encode frame as JPEG
+            ret, buffer = cv2.imencode('.jpg', image)
+            frame = buffer.tobytes()
 
-        image_pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(image_pil)
-        try:
-            font = ImageFont.truetype(hindi_font_path, 32)
-            if translated_word and language == "Hindi":
-                draw.text((10, 60), translated_word, font=font, fill=(255, 255, 255))
-        except Exception as e:
-            st.warning(f"Font error: {e}")
-        image = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-        cv2.rectangle(image, (0, 0), (640, 40), (245, 117, 16), -1)
-        cv2.putText(image, ' '.join(sentence), (3, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
-        frame_placeholder.image(image, channels="BGR")
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-        if stop_button:
-            break
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
-cap.release()
+@app.route('/set_language', methods=['POST'])
+def set_language():
+    global selected_language
+    selected_language = request.form.get("language", "English")
+    return ("", 204)
+
+if __name__ == '__main__':
+    app.run(debug=True)
